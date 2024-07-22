@@ -2,13 +2,13 @@ import psutil
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import uvicorn
+import asyncio
 import time
 import statistics
 
 app = FastAPI()
 
 cpu_history = {"mongod": [], "redis": []}
-HISTORY_DURATION = 2.5  # 2500 milliseconds
 
 
 def get_process_cpu_percent(process_name, username):
@@ -42,36 +42,32 @@ def get_cpu_stats(cpu_values):
     return None
 
 
+HISTORY_DURATION = 30  # 30 seconds
+SAMPLE_INTERVAL = 1  # 1 second
+
 @app.get("/cpu_usage")
 async def cpu_usage():
-    current_time = time.time()
-    mongod_cpu_percent = get_process_cpu_percent("mongod", "mongod")
-    redis_cpu_percent = get_process_cpu_percent("redis-server", "redis")
+    samples = []
+    start_time = time.time()
+
+    while time.time() - start_time < HISTORY_DURATION:
+        mongod_cpu_percent = get_process_cpu_percent("mongod", "mongod")
+        #mongod_cpu_percent = get_process_cpu_percent("mongod", "mongodb")
+        redis_cpu_percent = get_process_cpu_percent("redis-server", "redis")
+        
+        samples.append({
+            "timestamp": time.time(),
+            "mongod": mongod_cpu_percent,
+            "redis": redis_cpu_percent
+        })
+        
+        await asyncio.sleep(SAMPLE_INTERVAL)
 
     result = {}
-
-    for process, cpu_percent in [
-        ("mongod", mongod_cpu_percent),
-        ("redis", redis_cpu_percent),
-    ]:
-        if cpu_percent is not None:
-            cpu_history[process].append((current_time, cpu_percent))
-
-            # Remove old entries
-            while (
-                cpu_history[process]
-                and current_time - cpu_history[process][0][0] > HISTORY_DURATION
-            ):
-                cpu_history[process].pop(0)
-
-            cpu_values = [cpu for _, cpu in cpu_history[process]]
-            stats = get_cpu_stats(cpu_values) or {
-                "high": cpu_percent,
-                "average": cpu_percent,
-                "low": cpu_percent,
-                "median": cpu_percent,
-            }
-
+    for process in ["mongod", "redis"]:
+        cpu_values = [sample[process] for sample in samples if sample[process] is not None]
+        if cpu_values:
+            stats = get_cpu_stats(cpu_values)
             result[f"{process}_cpu_percent"] = stats
         else:
             result[f"{process}_cpu_percent"] = {
