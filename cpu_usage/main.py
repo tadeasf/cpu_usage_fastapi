@@ -42,8 +42,8 @@ def get_cpu_stats(cpu_values):
     return None
 
 
-HISTORY_DURATION = 30  # 30 seconds
-SAMPLE_INTERVAL = 1  # 1 second
+HISTORY_DURATION = 2.5  # 30 seconds
+SAMPLE_INTERVAL = 0.5  # 1 second
 
 @app.get("/cpu_usage")
 async def cpu_usage():
